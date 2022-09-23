@@ -11,6 +11,8 @@ import requests
 from bs4 import BeautifulSoup
 
 class TokenHitEnrichmentClass:
+    """Convenience class to store data used for lookups that
+    we need globally     and only want to initialize once"""
     tor_node_list = None
     url_of_tor_node_list = "https://check.torproject.org/torbulkexitlist"
 
@@ -18,6 +20,7 @@ class TokenHitEnrichmentClass:
     ipinfo_api_key = ADD_YOUR_API_KEY
 
 class TokenHit:
+    """Corresponds to data from a single email"""
     csv_header = ["Timestamp", "src_ip", "input_channel", "geo_info",
             "is_tor_relay", "referer", "location", "useragent"]
 
@@ -43,23 +46,31 @@ class TokenHit:
 
 
     def check_ip_for_tor_exit(self, ip):
+        """Looks up whether the ip of this
+        TokenHit is currently a tor exit node,
+        and sets the local variable correspondingly"""
         if TokenHitEnrichmentClass.tor_node_list is None:
             # Initialize tor node list
-            logging.info("Getting list of tor nodes from %s", TokenHitEnrichmentClass.url_of_tor_node_list)
+            logging.info("Getting list of tor nodes from %s",
+                    TokenHitEnrichmentClass.url_of_tor_node_list)
             response= requests.get(TokenHitEnrichmentClass.url_of_tor_node_list)
             TokenHitEnrichmentClass.tor_node_list = response.text.split("\n")
         TokenHitEnrichmentClass.tor_node_list.sort()
 
         self.is_tor_relay = ip in TokenHitEnrichmentClass.tor_node_list
 
-    def to_csv_array(self):
-        return [self.timestamp, self.src_ip, self.input_channel, self.geo_info,
-                self.is_tor_relay, self.referer, self.location, self.useragent]
-
     def get_geo_info(self, ip):
+        """Looks up geo info for the ip of this
+        TokenHit and sets the local variable correspondingly"""
         json_response = requests.get(TokenHitEnrichmentClass.url_of_ipinfo.format(
             ip=ip, token=TokenHitEnrichmentClass.ipinfo_api_key))
         self.geo_info = json_response.text
+
+    def to_csv_array(self):
+        """Returns data of this TokenHit as an array, ready to be written to
+        a .csv file"""
+        return [self.timestamp, self.src_ip, self.input_channel, self.geo_info,
+                self.is_tor_relay, self.referer, self.location, self.useragent]
 
 
 
@@ -70,8 +81,6 @@ def build_token_hit_from_email(email):
     Returns a TokenHit with the data from that email.
     """
     # Startstring of html in email
-
-
     html_identifier = "w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
     email_string = email.read()
     html = email_string.split(html_identifier)[1]
@@ -88,6 +97,8 @@ def build_token_hit_from_email(email):
 
 
 def write_token_hits_to_csv(csv_filename, list_of_token_hits):
+    """Creates a csv that contains all tokenhits
+    passed into this method"""
     with open(csv_filename, 'w') as csv_file:
         writer = csv.writer(csv_file)
 
@@ -98,6 +109,8 @@ def write_token_hits_to_csv(csv_filename, list_of_token_hits):
 
 
 def build_data_csv(path_to_email_folder, path_to_output_csv):
+    """Reads all files in the email folder, and writes
+    their info to a csv file given as second argument."""
     # Iterate over all email files and create token hits
     all_token_hits = []
     for email_file in os.scandir(path_to_email_folder):
@@ -111,6 +124,9 @@ def build_data_csv(path_to_email_folder, path_to_output_csv):
 
 
 def main():
+    """Reads all files in the given folder,
+    creates a .csv out of them, then runs
+    analysis + visualizations"""
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', required = True, help="Path to a folder of .eml files")
     parser.add_argument('-o', '--output', required = True,
@@ -124,11 +140,8 @@ def main():
             print("csv already exists. Use -f to overwrite")
             return
 
-
-
-    csv_with_canary_data = build_data_csv(args.input, args.output)
+    build_data_csv(args.input, args.output)
     # run_analyses()
-
     # TODO Check against click-throughs to platypus-facts, TLD
 
 
