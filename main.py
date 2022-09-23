@@ -24,28 +24,7 @@ class TokenHit:
     csv_header = ["Timestamp", "src_ip", "input_channel", "geo_info",
             "is_tor_relay", "referer", "location", "useragent"]
 
-
-    def create_list_from_csv(filename):
-        """Takes a csv file and returns a list
-        of all tokenhits contained within that csv file.
-        Naive, expects an exact match to the format we produce,
-        including ordering of keys"""
-        list_of_tokenhits = []
-        with open(filename, mode ='r') as csv_file:
-            reader = csv.reader(csv_file)
-            next(reader) # Skip header line
-
-            for line in reader:
-                token_hit = TokenHit(
-                        timestamp=line[0], src_ip=line[1], input_channel=line[3], 
-                        useragent=line[7],
-                        geo_info=line[3], is_tor_relay=line[4], 
-                        referer=line[5], location=line[6])
-                list_of_tokenhits.append(token_hit)
-        return list_of_tokenhits
-
-
-    def __init__(self, timestamp, src_ip, input_channel, useragent, 
+    def __init__(self, timestamp, src_ip, input_channel, useragent,
         geo_info=None, is_tor_relay=None, referer=None, location=None):
         # Order as in CSV
         # Taken from email
@@ -57,12 +36,12 @@ class TokenHit:
         if geo_info is None:
             self.get_geo_info(src_ip)
         else:
-            self.get_geo_info = geo_info
+            self.geo_info = geo_info
 
         if is_tor_relay is None:
             self.check_ip_for_tor_exit(src_ip)
         else:
-            self.check_ip_for_tor_exit = is_tor_relay
+            self.is_tor_relay = is_tor_relay
 
         # These don't exist for this type of token
         self.referer = referer
@@ -101,6 +80,24 @@ class TokenHit:
 
 
 
+def create_list_from_csv(filename):
+    """Takes a csv file and returns a list
+    of all tokenhits contained within that csv file.
+    Naive, expects an exact match to the format we produce,
+    including ordering of keys"""
+    list_of_tokenhits = []
+    with open(filename, mode ='r') as csv_file:
+        reader = csv.reader(csv_file)
+        next(reader) # Skip header line
+
+        for line in reader:
+            token_hit = TokenHit(
+                    timestamp=line[0], src_ip=line[1], input_channel=line[3],
+                    useragent=line[7],
+                    geo_info=line[3], is_tor_relay=line[4],
+                    referer=line[5], location=line[6])
+            list_of_tokenhits.append(token_hit)
+    return list_of_tokenhits
 
 
 def build_token_hit_from_email(email):
@@ -159,7 +156,8 @@ def main():
     parser.add_argument('-i', '--input', help="Path to a folder of .eml files")
     parser.add_argument('-co', '--csv_output', required = True,
             help="Path to where the output csv should be created/read from")
-    parser.add_argument('-f', '--force', action='store_true', help="force script to run even if .csv already exists")
+    parser.add_argument('-f', '--force', action='store_true',
+            help="force script to run even if .csv already exists")
     args = parser.parse_args()
     # Check if .csv file already exists, pass in -f to overwrite
 
@@ -173,7 +171,7 @@ def main():
         build_data_csv(args.input, args.csv_output)
 
 
-    list_of_all_tokenhits = TokenHit.create_list_from_csv(args.csv_output)
+    list_of_all_tokenhits = create_list_from_csv(args.csv_output)
 
     # run_analyses(list_of_all_tokenhits)
     # TODO Check against click-throughs to platypus-facts, TLD
