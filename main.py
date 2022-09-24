@@ -7,6 +7,7 @@ import os
 import argparse
 import logging
 import quopri
+import ipaddress
 from datetime import datetime
 
 import requests
@@ -118,6 +119,17 @@ def build_token_hit_from_email(email):
     timestamp = soup.find("td", string="Time").find_next_sibling("td").get_text()
     src_ip = soup.find("td", string="Source IP").find_next_sibling("td").get_text()
     user_agent = soup.find("td", string="User Agent").find_next_sibling("td").get_text()
+
+
+    # In some cases the src_ip field contains two ip addresses - from our data
+    # It appears that the first IP is local, and the second one lookup-able
+    # This tries to get rid of this edgecase
+    try:
+        ipaddress.ip_address(src_ip)
+    except ValueError:
+        # Is likely in the form ip1, ip2
+        second_address = ip_address.split(", ")[1]
+        ip_address = second_address
 
     tokenhit_from_email = TokenHit(timestamp, src_ip, channel, user_agent)
     return tokenhit_from_email
