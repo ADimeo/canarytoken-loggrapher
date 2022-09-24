@@ -6,6 +6,8 @@ import csv
 import os
 import argparse
 import logging
+import quopri
+from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
@@ -28,7 +30,7 @@ class TokenHit:
         geo_info=None, is_tor_relay=None, referer=None, location=None):
         # Order as in CSV
         # Taken from email
-        self.timestamp = timestamp
+        self.timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S (%Z)")
         self.src_ip = src_ip
         self.input_channel = input_channel
 
@@ -70,12 +72,12 @@ class TokenHit:
         TokenHit and sets the local variable correspondingly"""
         json_response = requests.get(TokenHitEnrichmentClass.url_of_ipinfo.format(
             ip=ip, token=TokenHitEnrichmentClass.ipinfo_api_key))
-        self.geo_info = json_response.text
+        self.geo_info = json_response.text.replace("\n","")
 
     def to_csv_array(self):
         """Returns data of this TokenHit as an array, ready to be written to
         a .csv file"""
-        return [self.timestamp, self.src_ip, self.input_channel, self.geo_info,
+        return [self.timestamp.strftime("%Y-%m-%d %H:%M:%S (UTC)"), self.src_ip, self.input_channel, self.geo_info,
                 self.is_tor_relay, self.referer, self.location, self.useragent]
 
 
@@ -109,7 +111,7 @@ def build_token_hit_from_email(email):
     html_identifier = "w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
     email_string = email.read()
     html = email_string.split(html_identifier)[1]
-    soup = BeautifulSoup(html, features="lxml")
+    soup = BeautifulSoup(quopri.decodestring(html), features="lxml")
     # Email appears to be compressed- class names are not consistent between emails
 
     channel = soup.find("td", string="Channel").find_next_sibling("td").get_text()
@@ -125,7 +127,7 @@ def write_token_hits_to_csv(csv_filename, list_of_token_hits):
     """Creates a csv that contains all tokenhits
     passed into this method"""
     with open(csv_filename, 'w') as csv_file:
-        writer = csv.writer(csv_file)
+        writer = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
         writer.writerow(TokenHit.csv_header)
 
