@@ -169,8 +169,8 @@ def main():
     creates a .csv out of them, then runs
     analysis + visualizations"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', help="Path to a folder of .eml files")
-    parser.add_argument('-co', '--csv_output', required = True,
+    parser.add_argument('-ei', '--email_input', help="Path to a folder of .eml files")
+    parser.add_argument('-i', '--csv_input', required = True,
             help="Path to where the output csv should be created/read from")
     parser.add_argument('-f', '--force', action='store_true',
             help="force script to run even if .csv already exists")
@@ -190,8 +190,6 @@ def main():
     list_of_all_tokenhits = create_list_from_csv(args.csv_output)
 
     analysis.run_analyses(list_of_all_tokenhits)
-    # TODO Check against click-throughs to platypus-facts, TLD
-
 
 if __name__ == "__main__":
     main()
