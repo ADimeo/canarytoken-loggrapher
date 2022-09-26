@@ -13,6 +13,8 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
+import analysis
+
 class TokenHitEnrichmentClass:
     """Convenience class to store data used for lookups that
     we need globally     and only want to initialize once"""
@@ -187,7 +189,7 @@ def main():
 
     list_of_all_tokenhits = create_list_from_csv(args.csv_output)
 
-    # run_analyses(list_of_all_tokenhits)
+    analysis.run_analyses(list_of_all_tokenhits)
     # TODO Check against click-throughs to platypus-facts, TLD
 
 
