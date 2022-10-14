@@ -177,18 +177,17 @@ def main():
     args = parser.parse_args()
     # Check if .csv file already exists, pass in -f to overwrite
 
-    if os.path.exists(args.csv_output) and not args.force:
+    if os.path.exists(args.csv_input) and not args.force:
         print("csv already exists. Use -f to overwrite")
         print("Using existing csv for data analysis...")
     else:
         if args.input is None:
             print("No --input folder given and no existing csv found")
             return
-        build_data_csv(args.input, args.csv_output)
+        build_data_csv(args.input, args.csv_input)
 
 
-    list_of_all_tokenhits = create_list_from_csv(args.csv_output)
-
+    list_of_all_tokenhits = create_list_from_csv(args.csv_input)
     analysis.run_analyses(list_of_all_tokenhits)
 
 if __name__ == "__main__":
