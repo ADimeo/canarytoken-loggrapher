@@ -9,6 +9,7 @@ import logging
 import quopri
 import ipaddress
 from datetime import datetime
+from collections import Counter
 
 import requests
 from bs4 import BeautifulSoup
@@ -18,7 +19,7 @@ import analysis
 class TokenHitEnrichmentClass:
     """Convenience class to store data used for lookups that
     we need globally     and only want to initialize once"""
-    tor_node_list = None
+    tor_node_list = []
     url_of_tor_node_list = "https://check.torproject.org/torbulkexitlist"
 
     url_of_ipinfo = "https://ipinfo.io/{ip}?token={token}"
@@ -60,7 +61,7 @@ class TokenHit:
         """Looks up whether the ip of this
         TokenHit is currently a tor exit node,
         and sets the local variable correspondingly"""
-        if TokenHitEnrichmentClass.tor_node_list is None:
+        if len(TokenHitEnrichmentClass.tor_node_list) == 0:
             # Initialize tor node list
             logging.info("Getting list of tor nodes from %s",
                     TokenHitEnrichmentClass.url_of_tor_node_list)
@@ -73,6 +74,7 @@ class TokenHit:
     def get_geo_info(self, ip):
         """Looks up geo info for the ip of this
         TokenHit and sets the local variable correspondingly"""
+        logging.info(f"Getting geo info for {ip}")
         json_response = requests.get(TokenHitEnrichmentClass.url_of_ipinfo.format(
             ip=ip, token=TokenHitEnrichmentClass.ipinfo_api_key))
         self.geo_info = json_response.text.replace("\n","")
@@ -80,7 +82,8 @@ class TokenHit:
     def to_csv_array(self):
         """Returns data of this TokenHit as an array, ready to be written to
         a .csv file"""
-        return [self.timestamp.strftime("%Y-%m-%d %H:%M:%S (UTC)"), self.src_ip, self.input_channel, self.geo_info,
+        return [self.timestamp.strftime("%Y-%m-%d %H:%M:%S (UTC)"),
+                self.src_ip, self.input_channel, self.geo_info,
                 self.is_tor_relay, self.referer, self.location, self.useragent]
 
 
@@ -108,15 +111,29 @@ def create_list_from_csv(filename):
 def build_token_hit_from_email(email):
     """Expects an opened file as input. Should be a .eml file
     that is formatted as emails sent by thinkst canary are formatted.
-    Returns a TokenHit with the data from that email.
+    Returns a (token_reminder,TokenHit) with the data from that email.
+    Returns (None,None) if this email is not from canarytoken
     """
     # Startstring of html in email
-    html_identifier = "w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
-    email_string = email.read()
-    html = email_string.split(html_identifier)[1]
-    soup = BeautifulSoup(quopri.decodestring(html), features="lxml")
-    # Email appears to be compressed- class names are not consistent between emails
 
+
+    try:
+        html_identifier = "w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
+        email_string = email.read()
+        html = email_string.split(html_identifier)[1]
+        soup = BeautifulSoup(quopri.decodestring(html), features="lxml")
+
+        # Classify emails based on TokenReminder
+        token_reminder = soup.find("td", string="Token Reminder").find_next_sibling("td").get_text()
+        if token_reminder is None:
+            # Not an canary email
+            return (None, None)
+    except IndexError:
+        return (None, None)
+    except AttributeError:
+        return (None, None)
+
+    # Email appears to be compressed- class names are not consistent between emails
     channel = soup.find("td", string="Channel").find_next_sibling("td").get_text()
     timestamp = soup.find("td", string="Time").find_next_sibling("td").get_text()
     src_ip = soup.find("td", string="Source IP").find_next_sibling("td").get_text()
@@ -127,19 +144,19 @@ def build_token_hit_from_email(email):
     # It appears that the first IP is local, and the second one lookup-able
     # This tries to get rid of this edgecase
     try:
-        ipaddress.ip_address(src_ip)
+        ip_address = ipaddress.ip_address(src_ip)
     except ValueError:
         # Is likely in the form ip1, ip2
-        second_address = ip_address.split(", ")[1]
+        second_address = src_ip.split(", ")[1]
         ip_address = second_address
 
-    tokenhit_from_email = TokenHit(timestamp, src_ip, channel, user_agent)
-    return tokenhit_from_email
+    tokenhit_from_email = TokenHit(timestamp, ip_address, channel, user_agent)
+    return (token_reminder, tokenhit_from_email)
 
 
 def write_token_hits_to_csv(csv_filename, list_of_token_hits):
     """Creates a csv that contains all tokenhits
-    passed into this method"""
+    passed into this method."""
     with open(csv_filename, 'w') as csv_file:
         writer = csv.writer(csv_file, quoting=csv.QUOTE_ALL)
 
@@ -147,48 +164,176 @@ def write_token_hits_to_csv(csv_filename, list_of_token_hits):
 
         for hit in list_of_token_hits:
             writer.writerow(hit.to_csv_array())
+    return csv_filename
 
 
-def build_data_csv(path_to_email_folder, path_to_output_csv):
+def get_name_if_should_not_query(email, base_path_to_output_csv, force):
+    """For a given email, checks if a csv belonging to this tag already exists.
+    Takes into account the current prefix (e.g. we only care for csv files with
+    this prefix), and whetehr the user wants to force ignore existing csvs
+    """
+    if force is True:
+        return None
+
+    try:
+        # Get token from email
+        html_identifier = "w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
+        email_string = email.read()
+        html = email_string.split(html_identifier)[1]
+        soup = BeautifulSoup(quopri.decodestring(html), features="lxml")
+        # Classify emails based on TokenReminder
+        token_reminder = soup.find("td", string="Token Reminder").find_next_sibling("td").get_text()
+        if token_reminder is None:
+            # Not an canary email
+            return None
+    except IndexError:
+        return None
+    except AttributeError:
+        return None
+
+    # Lookup if csv exists
+    full_csv_filename = base_path_to_output_csv + token_reminder+ ".csv"
+    if os.path.exists(full_csv_filename):
+        return full_csv_filename
+    return None
+
+
+def add_token_if_is_valid(email, all_token_hits, base_path_to_output_csv):
+    """Reads details from the token contained within
+    the given email to the given all_token_hits list,
+    if it belongs there"""
+    token_reminder, token = build_token_hit_from_email(email)
+
+    if token_reminder is None:
+        return
+
+    token_path = base_path_to_output_csv + token_reminder+ ".csv"
+    if token_path not in all_token_hits:
+        all_token_hits[token_path] = []
+
+    all_token_hits[token_path].append(token)
+
+
+def build_data_csvs(path_to_email_folder, base_path_to_output_csv, force=False):
     """Reads all files in the email folder, and writes
-    their info to a csv file given as second argument."""
+    all tokenhits into different csv files, depending on their
+    "Token Reminder" string. base_path_to_output_csv is
+    prepended to all csvs we create. Ignores entries
+    if a csv with that reminder string (and prefix)
+    already exists, this can be toggled with force"""
     # Iterate over all email files and create token hits
-    all_token_hits = []
+    all_token_hits = {}
+    uncreated_csv_filenames = Counter()
+
     for email_file in os.scandir(path_to_email_folder):
         with open(email_file.path) as email:
-            all_token_hits.append(build_token_hit_from_email(email))
+            already_existing_file = get_name_if_should_not_query(email,
+                    base_path_to_output_csv, force)
 
-    write_token_hits_to_csv(path_to_output_csv, all_token_hits)
+            if already_existing_file is not None:
+                logging.info(f"Identified file {already_existing_file} as existing, blocking edit")
+                # Don't overwrite/query these.
+                # Decide this early to limit potentially expensive API lookups
+                # Also prepare to print out list of these files
+                uncreated_csv_filenames[already_existing_file] += 1
+                continue
+            # Reset stream to beginning, since we already
+            # read it above
+            email.seek(0, 0)
+            add_token_if_is_valid(email, all_token_hits, base_path_to_output_csv)
+
+    created_csv_filenames = []
+    for path_to_output_csv, hits_at_path in all_token_hits.items():
+        created_csv_filenames.append(
+                write_token_hits_to_csv(path_to_output_csv, hits_at_path))
+    return created_csv_filenames, uncreated_csv_filenames
 
 
 
+def print_uncreated_file_details(uncreated_filenames):
+    """Prints output giving user additional context
+    if we did not create a specific csv for a reason"""
+    if len(uncreated_filenames) == 0:
+        return
 
+    print("Warning: The following files already exist, and will not be modified, "\
+            "even though the email folder contains token hits for them:")
+    for filename, hits in uncreated_filenames.items():
+        print(f"{filename} ({hits} token hits)")
+    print("To overwrite these files call again with the --force option")
+
+def print_created_file_details(created_filenames, no_visualize):
+    """Prints output giving user additional context
+    over created csv files"""
+    if len(created_filenames) == 0:
+        print("No csvs created")
+        return
+
+    print("Created these csvs:")
+    for filename in created_filenames:
+        print(filename)
+    if no_visualize:
+        print("Skipping visualization")
 
 def main():
     """Reads all files in the given folder,
     creates a .csv out of them, then runs
-    analysis + visualizations"""
+    analysis + visualizations
+
+
+    Example calls:
+    python main.py --input_folder /folder --no-visualize
+    Create csvs for all reminders in a folder that don't exist yet
+
+    python main.py --input_files a.csv b.csv
+    Visualise the given csv files
+
+    python main.py --input_folder /folder --prefix "token_" --force
+    Create csvs for all reminders in a folder in csv files that have a _token prefix,
+    then display visualizations for these
+
+    python main.py --input_folder /folder --input_files webpage.csv
+    Create csvs for all reminders in a folder that don't exist yet,
+    afterwards only display graphs for webpage.csv
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ei', '--email_input', help="Path to a folder of .eml files")
-    parser.add_argument('-i', '--csv_input', required = True,
-            help="Path to where the output csv should be created/read from")
+    parser.add_argument('-if', '--input_folder', help='Path to a folder of .eml files')
+    parser.add_argument('-ic', '--input_csvs', action='extend',
+            help='List of .csv that should be drawn. '\
+            'If --input_folder is set this defaults to all files that would be created')
+
+    parser.add_argument('-p', '--prefix', default="",
+            help='Prefix for the csvs that are created by the email parsing step')
+
+    parser.add_argument('-nv', '--no_visualize', action='store_true',
+            help='Skip the visualization step. Overrides --input_csvs')
     parser.add_argument('-f', '--force', action='store_true',
-            help="force script to run even if .csv already exists")
+            help='Overwrite existing .csvs, even if they already exist')
+
     args = parser.parse_args()
-    # Check if .csv file already exists, pass in -f to overwrite
+    if not (args.input_folder or args.input_csvs):
+        parser.error("No action requested, please use --input_folder or --input_csvs")
 
-    if os.path.exists(args.csv_input) and not args.force:
-        print("csv already exists. Use -f to overwrite")
-        print("Using existing csv for data analysis...")
-    else:
-        if args.input is None:
-            print("No --input folder given and no existing csv found")
-            return
-        build_data_csv(args.input, args.csv_input)
+    created_filenames = []
+    # Do the csv reading step
+    if args.input_folder is not None:
+        created_filenames, uncreated_filenames = build_data_csvs(args.input_folder,
+                args.prefix, args.force)
+        print_uncreated_file_details(uncreated_filenames)
+        print_created_file_details(created_filenames, args.no_visualize)
 
 
-    list_of_all_tokenhits = create_list_from_csv(args.csv_input)
-    analysis.run_analyses(list_of_all_tokenhits)
+    if args.no_visualize:
+        return
+
+    # Do the visualization step
+    if args.input_csvs is not None:
+        created_filenames = args.input_csvs
+
+    for csv_filename in created_filenames + list(uncreated_filenames.keys()):
+        list_of_all_tokenhits = create_list_from_csv(csv_filename)
+        analysis.run_analyses(list_of_all_tokenhits)
+
 
 if __name__ == "__main__":
     main()
