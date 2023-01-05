@@ -1,6 +1,8 @@
 # Canarytoken log analysis
 Create graphs out of the .csv [Thinkst canarytoken](https://www.canarytokens.org/) provides, and create a .csv out canarytoken notifier emails if you want more history than what the downloadable .csv contains
 
+Note: This software is very early stage, and currently not optimised for usage by non-authors. If you want to use it hit me up and I'll get it up to shape - I mean it!
+
 
 ## Usage
 ### From an existing .csv
