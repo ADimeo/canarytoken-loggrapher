@@ -249,7 +249,6 @@ def build_data_csvs(path_to_email_folder, base_path_to_output_csv, force=False):
     return created_csv_filenames, uncreated_csv_filenames
 
 
-
 def print_uncreated_file_details(uncreated_filenames):
     """Prints output giving user additional context
     if we did not create a specific csv for a reason"""
@@ -275,6 +274,17 @@ def print_created_file_details(created_filenames, no_visualize):
     if no_visualize:
         print("Skipping visualization")
 
+def create_csvs(input_folder, output_prefix, force):
+    created_filenames, uncreated_filenames = build_data_csvs(args.input_folder,
+            args.prefix, args.force)
+    print_uncreated_file_details(uncreated_filenames)
+    print_created_file_details(created_filenames, args.no_visualize)
+    return created_filenames, uncreated_filenames
+
+
+
+
+
 def main():
     """Reads all files in the given folder,
     creates a .csv out of them, then runs
@@ -298,7 +308,7 @@ def main():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('-if', '--input_folder', help='Path to a folder of .eml files')
-    parser.add_argument('-ic', '--input_csvs', action='extend',
+    parser.add_argument('-ic', '--input_csvs', action='append', type=str,
             help='List of .csv that should be drawn. '\
             'If --input_folder is set this defaults to all files that would be created')
 
@@ -315,20 +325,23 @@ def main():
         parser.error("No action requested, please use --input_folder or --input_csvs")
 
     created_filenames = []
-    # Do the csv reading step
+    # Do the csv creation step
     if args.input_folder is not None:
-        created_filenames, uncreated_filenames = build_data_csvs(args.input_folder,
-                args.prefix, args.force)
-        print_uncreated_file_details(uncreated_filenames)
-        print_created_file_details(created_filenames, args.no_visualize)
-
+        created_filenames, uncreated_filenames = create_csvs()
+    else:
+        created_filenames = []
+        uncreated_filenames = Counter()
 
     if args.no_visualize:
         return
 
+
+
     # Do the visualization step
     if args.input_csvs is not None:
+        # Only draw files user explicitly selected - or default to all
         created_filenames = args.input_csvs
+
 
     for csv_filename in created_filenames + list(uncreated_filenames.keys()):
         list_of_all_tokenhits = create_list_from_csv(csv_filename)
