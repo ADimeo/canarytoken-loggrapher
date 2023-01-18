@@ -225,6 +225,7 @@ def build_data_csvs(path_to_email_folder, base_path_to_output_csv, force=False):
     all_token_hits = {}
     uncreated_csv_filenames = Counter()
 
+    print("This might take a while")
     for email_file in os.scandir(path_to_email_folder):
         with open(email_file.path) as email:
             already_existing_file = get_name_if_should_not_query(email,
@@ -274,11 +275,11 @@ def print_created_file_details(created_filenames, no_visualize):
     if no_visualize:
         print("Skipping visualization")
 
-def create_csvs(input_folder, output_prefix, force):
-    created_filenames, uncreated_filenames = build_data_csvs(args.input_folder,
-            args.prefix, args.force)
+def create_csvs(input_folder, output_prefix, force, no_visualize):
+    created_filenames, uncreated_filenames = build_data_csvs(input_folder,
+            output_prefix, force)
     print_uncreated_file_details(uncreated_filenames)
-    print_created_file_details(created_filenames, args.no_visualize)
+    print_created_file_details(created_filenames, no_visualize)
     return created_filenames, uncreated_filenames
 
 
@@ -327,7 +328,7 @@ def main():
     created_filenames = []
     # Do the csv creation step
     if args.input_folder is not None:
-        created_filenames, uncreated_filenames = create_csvs()
+        created_filenames, uncreated_filenames = create_csvs(args.input_folder, args.prefix, args.force, args.no_visualize)
     else:
         created_filenames = []
         uncreated_filenames = Counter()
