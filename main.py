@@ -335,17 +335,20 @@ def main():
     if args.no_visualize:
         return
 
-
-
     # Do the visualization step
     if args.input_csvs is not None:
         # Only draw files user explicitly selected - or default to all
         created_filenames = args.input_csvs
 
 
+    list_of_tokenToGraph = []
+    # Create list of TokenToDraw that is then passed to visualization
     for csv_filename in created_filenames + list(uncreated_filenames.keys()):
         list_of_all_tokenhits = create_list_from_csv(csv_filename)
-        analysis.run_analyses(list_of_all_tokenhits)
+        token_to_graph = analysis.TokenToGraph(csv_filename, list_of_all_tokenhits)
+        list_of_tokenToGraph.append(token_to_graph)
+
+    analysis.run_analyses(list_of_tokenToGraph)
 
 
 if __name__ == "__main__":
